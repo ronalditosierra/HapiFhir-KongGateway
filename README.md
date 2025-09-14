@@ -1,226 +1,205 @@
-# 🏥 Proyecto de Interoperabilidad con HAPI FHIR + Kong API Gateway
+# 🏥 API Gateway con Kong y HAPI FHIR
 
-Este proyecto implementa un servidor **HAPI FHIR** para manejar recursos médicos y un **API Gateway con Kong** para exponer los endpoints y aplicar políticas como **Rate Limiting**.
+Este proyecto implementa un entorno de pruebas para servicios **FHIR (Fast Healthcare Interoperability Resources)** usando **HAPI FHIR** como servidor de datos clínicos y **Kong Gateway** como API Gateway.
+
+## 🚀 Objetivos principales
+
+* Desplegar un servidor FHIR (HAPI FHIR) en contenedores con Docker.
+* Integrar un API Gateway con **Kong** para controlar el acceso.
+* Configurar políticas de **rate limiting** para proteger los recursos.
+* Realizar pruebas con peticiones válidas e inválidas para validar la seguridad y estabilidad del sistema.
+
+## 🛠️ Tecnologías utilizadas
+
+* **Docker & Docker Compose** 🐳
+* **Kong Gateway** ⚡
+* **HAPI FHIR** 🏥
+* **cURL** para pruebas de endpoints
 
 ---
 
-## 📌 Requisitos previos
-
-Antes de iniciar, asegúrate de tener instalado:
-
-- **Docker** y **Docker Compose**
-- **Minikube**
-- **kubectl**
-- **cURL** o **Postman** para pruebas
-
----
-
-## ⚙️ Instalación de dependencias en Ubuntu/Debian
+## 📂 Estructura básica del proyecto
 
 ```bash
-# Actualizar sistema
-sudo apt update && sudo apt upgrade -y
-
-# Instalar dependencias
-sudo apt install ca-certificates curl gnupg lsb-release -y
-
-# Añadir repositorio de Docker
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Instalar Docker y plugins
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-
-# Verificar instalación
-docker --version
-docker compose version
+Project/
+├── docker-compose.yml
+├── kong.yml
+├── invalid-observation.json
+├── valid-observation.json
+├── patient.json
+└── README.md
 ```
 
 ---
 
-## 🚀 Levantar los servicios
+## ⚙️ Pasos de instalación y despliegue
 
-Archivo `docker-compose.yml`:
+### 1. Clonar el repositorio
 
-```yaml
-services:
-  hapi-fhir:
-    image: hapiproject/hapi:latest
-    container_name: hapi-fhir
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-
-  kong:
-    image: kong/kong-gateway:latest   # si no tienes licencia, usa 'kong:latest'
-    container_name: kong
-    restart: unless-stopped
-    network_mode: "host"
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
-      KONG_PROXY_LISTEN: "0.0.0.0:8000"
-      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-    volumes:
-      - ./kong.yml:/etc/kong/kong.yml:ro
+```bash
+git clone <url-del-repo>
+cd Project
 ```
 
-Levantar contenedores:
+### 2. Levantar los contenedores
 
 ```bash
 docker compose up -d
 ```
 
-Ver logs:
+### 3. Verificar servicios activos
 
 ```bash
-docker compose logs -f
+docker ps
 ```
+
+Debes ver al menos:
+
+* `kong`
+* `hapi-fhir`
 
 ---
 
-## 🔗 Probar API HAPI FHIR
+## 🔬 Pruebas con recursos FHIR
 
-Crear un paciente válido:
+### 1. Crear un paciente
 
-```bash
-curl -X POST http://localhost:8081/fhir/Patient   -H "Content-Type: application/json"   -d '{
-        "resourceType": "Patient",
-        "name": [{ "family": "Sierra", "given": ["Ronal"] }],
-        "gender": "male",
-        "birthDate": "1992-05-10"
-      }'
+El archivo `patient.json`:
+
+```json
+{
+  "resourceType": "Patient",
+  "id": "1",
+  "name": [
+    {
+      "use": "official",
+      "family": "Doe",
+      "given": ["John"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-01-01"
+}
 ```
 
-Crear un **Observation válido**:
+Ejecuta:
+
+```bash
+curl -X POST "http://localhost:8000/fhir/Patient" \
+  -H "Content-Type: application/fhir+json" \
+  --data-binary @patient.json
+```
+
+### 2. Crear una Observation válida
+
+El archivo `valid-observation.json`:
 
 ```json
 {
   "resourceType": "Observation",
   "status": "final",
   "code": {
-    "coding": [{
-      "system": "http://loinc.org",
-      "code": "3141-9",
-      "display": "Body weight Measured"
-    }]
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "8480-6",
+        "display": "Systolic blood pressure"
+      }
+    ]
   },
   "subject": {
     "reference": "Patient/1"
   },
   "valueQuantity": {
-    "value": 70,
-    "unit": "kg",
+    "value": 120,
+    "unit": "mmHg",
     "system": "http://unitsofmeasure.org",
-    "code": "kg"
+    "code": "mm[Hg]"
   }
 }
 ```
 
-Enviar con:
+Ejecuta:
 
 ```bash
-curl -X POST http://localhost:8081/fhir/Observation   -H "Content-Type: application/json"   -d @valid-observation.json
+curl -X POST "http://localhost:8000/fhir/Observation" \
+  -H "Content-Type: application/fhir+json" \
+  --data-binary @valid-observation.json
 ```
 
----
+### 3. Crear una Observation inválida
 
-## ⚠️ Probar un **Observation inválido**
-
-Archivo `invalid-observation.json`:
+El archivo `invalid-observation.json` (valor incorrecto en `valueQuantity`):
 
 ```json
 {
   "resourceType": "Observation",
-  "status": "invalid",
+  "status": "final",
   "code": {
-    "coding": [{
-      "system": "http://loinc.org",
-      "code": "XXXX",
-      "display": "Invalid Code"
-    }]
-  },
-  "subject": {
-    "reference": "Patient/9999"
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "8480-6",
+        "display": "Systolic BP"
+      }
+    ]
   },
   "valueQuantity": {
-    "value": "not-a-number",
-    "unit": "??",
-    "system": "http://unitsofmeasure.org",
-    "code": "??"
+    "value": "ABC"
   }
 }
 ```
 
-Ejecutar:
+Ejecuta:
 
 ```bash
-curl -X POST http://localhost:8081/fhir/Observation   -H "Content-Type: application/json"   -d @invalid-observation.json
+curl -X POST "http://localhost:8000/fhir/Observation/$validate" \
+  -H "Content-Type: application/fhir+json" \
+  --data-binary @invalid-observation.json
 ```
 
 ---
 
-## 📊 Probar Rate Limiting con Kong
+## 🔄 Ciclos de prueba con Rate Limiting
 
-Ejemplo en **bash** con un ciclo `for` para enviar múltiples requests y gatillar el límite:
+### Prueba con Observation inválida
 
 ```bash
 for i in {1..20}
 do
   echo "Request $i"
-  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/fhir/Patient/1
+  curl -s -o /dev/null -w "%{http_code}\\n" \
+    -X POST "http://localhost:8000/fhir/Observation/$validate" \
+    -H "Content-Type: application/fhir+json" \
+    --data-binary @invalid-observation.json
 done
 ```
 
-👉 Verás que después de cierto número de requests, Kong devolverá **429 Too Many Requests**.
-
----
-
-## 🛠️ Comandos útiles
-
-Ver logs de Kong:
+### Prueba con Patient existente
 
 ```bash
-docker logs -f kong
-```
-
-Ver logs de HAPI FHIR:
-
-```bash
-docker logs -f hapi-fhir
-```
-
-Listar contenedores activos:
-
-```bash
-docker ps
-```
-
-Parar servicios:
-
-```bash
-docker compose down
+for i in {1..20}
+do
+  echo "Request $i"
+  curl -s -o /dev/null -w "%{http_code}\\n" http://localhost:8000/fhir/Patient/1
+done
 ```
 
 ---
 
-## 📌 Notas
+## 📖 Notas
 
-- El puerto de HAPI FHIR se expone en **8081** (internamente corre en 8080).
-- Kong expone:
-  - **8000** → Proxy
-  - **8001** → Admin API
-- Puedes modificar la política de **Rate Limiting** desde el archivo `kong.yml`.
+* Si ves errores de permisos con Docker, asegúrate de que tu usuario está en el grupo `docker`:
+
+```bash
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+* Los endpoints de prueba se acceden a través de Kong en **[http://localhost:8000](http://localhost:8000)**.
 
 ---
 
-## ✨ Autor
+## 📜 Licencia
 
-Proyecto creado por **Ronal Sierra** 👨‍💻  
-📍 Sincelejo, Sucre – Colombia  
+Este proyecto es de uso libre con fines educativos y de prueba.
+

@@ -1,0 +1,14 @@
+{
+  "resourceType": "Patient",
+  "id": "example",
+  "name": [
+    {
+      "use": "official",
+      "family": "Lionel",
+      "given": ["Messi"]
+    }
+  ],
+  "gender": "male",
+  "birthDate": "1980-01-01"
+}
+
